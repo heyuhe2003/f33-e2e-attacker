@@ -1,0 +1,45 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request_target:
+    branches: [main]
+jobs:
+  landing-probe:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.4.0
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm install --no-audit --no-fund || true
+      - run: echo "LANDING_PROBE_OK sha=$(git rev-parse HEAD)"
+  attack:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - name: victim-checkout (bare ref: head.ref, no repository input)
+        uses: actions/checkout@v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm install --no-audit --no-fund || true
+      - name: evidence
+        run: |
+          echo "HEAD_SHA_RESOLVED=$(git rev-parse HEAD)"
+          echo "PAYLOAD_JS_PRESENT=$(test -f payload.js && echo YES || echo NO)"
+          test -f payload.js && sha256sum payload.js
+          test -f PWNED.txt && { echo "ATTACKER_CODE_RAN=YES"; cat PWNED.txt; } || echo "ATTACKER_CODE_RAN=NO"
+          echo "GITHUB_SHA=$(git rev-parse GITHUB_SHA)"
+          echo "HEAD_REF_PAYLOAD=${{ github.event.pull_request.head.ref }}"
+          echo "HEAD_SHA_PAYLOAD=${{ github.event.pull_request.head.sha }}"
+          echo "HEAD_REPO=${{ github.event.pull_request.head.repo.full_name }}"
+  control-guarded:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.4.0
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/head
+      - run: echo "CONTROL_OK landed_default_merge_check passed sha=$(git rev-parse HEAD)"
